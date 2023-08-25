@@ -27,13 +27,22 @@ log = logging.getLogger(__name__)
 VERSION = "1.0"
 
 #welcome message
-WELCOME_MESSAGE = f"""__        _____ ___  
-\ \      / /_ _/ _ \ 
- \ \ /\ / / | | | | |
-  \ V  V /  | | |_| |
-   \_/\_/  |___\___/ 
-Web Image Optimizer
-v. {VERSION}
+WELCOME_MESSAGE = f""" ▄         ▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄ 
+▐░▌       ▐░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+▐░▌       ▐░▌ ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌
+▐░▌       ▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌   ▄   ▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌  ▐░▌  ▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌ ▐░▌░▌ ▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌▐░▌ ▐░▌▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌░▌   ▐░▐░▌ ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌
+▐░░▌     ▐░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+ ▀▀       ▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀ 
+                                       
+          Web Image Optimizer
+
+Made with ❤️ by UndyingSoul
+GitHub: https://github.com/UndyingSoul/wio
     """
 
 # Supported image formats and their corresponding Pillow plugins
@@ -44,10 +53,11 @@ SUPPORTED_FORMATS = {
     "gif": GifImagePlugin.GifImageFile,
     "webp": WebPImagePlugin.WebPImageFile,
     "bmp": BmpImagePlugin.BmpImageFile,
-    "blp": BlpImagePlugin.BlpImageFile,
     "tiff": TiffImagePlugin.TiffImageFile,
     "avif": AvifImagePlugin.AvifImageFile,
 }
+
+human_readable_bools = ('no','yes')
 
 def range_arg_type(astr, min=0, max=100):
     value = int(astr)
@@ -63,17 +73,41 @@ def size_of_file_fmt(num, suffix="B"):
         num /= 1024.0
     return f"{num:.1f} Yi{suffix}"
 
+def generate_output_path(input_path, format, keep_originals, save_as_original_format):
+    directory, filename = os.path.split(input_path)
+    filename, ext = os.path.splitext(filename)
+    
+    if save_as_original_format:
+        new_ext = ext if not keep_originals else "_wio" + ext
+    else:
+        new_ext = + ext
+
+    output_path = os.path.join(directory, filename + new_ext)
+    return output_path
+
 # Function to convert an image to the specified format and quality
-async def convert_image(input_path, output_path, format, quality, keep_metadata):
+async def convert_image(input_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format, resize):
     log.debug(f"Converting image {input_path}")
     try:
         with Image.open(input_path) as img:
             img = ImageOps.exif_transpose(img)  # Fix orientation if applicable
             
+            if resize:
+                width, height = img.size
+                new_width = int(width * (quality / 100))
+                new_height = int(height * (quality / 100))
+                img = img.resize((new_width, new_height), Image.LANCZOS)
+
             exif_data = img.info.get('exif')  # Get exif data
             exif_kwargs = {'exif': exif_data} if exif_data and keep_metadata else {}
 
-            img.save(output_path, format=format, quality=quality, **exif_kwargs)
+            if save_as_original_format:
+                output_path = generate_output_path(input_path, format, keep_originals, save_as_original_format)
+
+            if resize:
+                img.save(output_path, format=format, quality=95, subsampling=0, **exif_kwargs)
+            else:
+                img.save(output_path, format=format, quality=quality, **exif_kwargs)
             return True
     except Exception as e:
         log.error(f"Could not convert {input_path}")
@@ -81,16 +115,31 @@ async def convert_image(input_path, output_path, format, quality, keep_metadata)
         return False
 
 # Function to process a single image file
-async def process_file(file_path, format, quality, keep_originals, keep_metadata, index, total):
+async def process_file(file_path, format, quality, keep_originals, keep_metadata, index, total, resize):
     directory, filename = os.path.split(file_path)
     filename, ext = os.path.splitext(filename)
-    output_path = os.path.join(directory, filename + "." + format)
-    if await convert_image(file_path, output_path, format, quality, keep_metadata):
-        file_path_size = os.stat(file_path).st_size
+    save_as_original_format = False
+    
+    if format == "original":
+        save_as_original_format = True
+        format = ext[1:]
+        if format == "jpg":
+            format = "jpeg" # dumb, but necessary edge case
+            
+        
+        output_path = generate_output_path(file_path, format, keep_originals, save_as_original_format)
+        if not format:
+            log.critical(f"Invalid extension for file {output_path}")
+            return
+    else:
+        output_path = os.path.join(directory, filename + "." + format)
+        
+    file_path_size = os.stat(file_path).st_size
+    if await convert_image(file_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format, resize):
         output_path_size = os.stat(output_path).st_size
         space_saved_percent = int((1-(output_path_size/file_path_size))*100)
-        space_saved = f"({space_saved_percent}% smaller)" if space_saved_percent > 0 else f"{Fore.BLACK}{Back.WHITE}({abs(space_saved_percent)}% larger){Fore.RESET}{Back.RESET}"
-        if not keep_originals:  # Optionally delete the original file
+        space_saved = f"({space_saved_percent}% smaller)" if space_saved_percent > -1 else f"{Fore.BLACK}{Back.WHITE}({abs(space_saved_percent)}% larger){Fore.RESET}{Back.RESET}"
+        if not keep_originals and not save_as_original_format:  # Optionally delete the original file
             log.info(f"Deleting file {file_path}")
             os.remove(file_path)
         log.info(f"{index+1}/{total} ({int(((index+1)/total)*100)}%) - Converted {file_path}[{size_of_file_fmt(file_path_size)}] to {output_path}[{size_of_file_fmt(output_path_size)}] {space_saved}")
@@ -98,7 +147,8 @@ async def process_file(file_path, format, quality, keep_originals, keep_metadata
 # Main function that handles command line arguments and orchestrates the conversion process
 def main():
     # Arguments
-    parser = argparse.ArgumentParser(description="Web Image optimizer/converter")
+    parser = argparse.ArgumentParser(description=f"This script converts and optimizes images for the web",
+                                      epilog="https://github.com/UndyingSoul/wio for examples")
     parser.add_argument(
         '--version',
         '-v',
@@ -115,13 +165,14 @@ def main():
         "-e",
         nargs="*",
         choices=SUPPORTED_FORMATS,
+        metavar="ext",
         default=["jpg", "jpeg", "png", "gif"],
         help="File extensions to convert",
     )
     parser.add_argument(
         "--format",
         "-f",
-        choices=["webp", "avif"],
+        choices=["webp", "avif", "original"],
         default="avif",
         help="Format to convert the images to",
     )
@@ -132,6 +183,12 @@ def main():
         metavar="[0-100]",
         default=70,
         help="Quality of the conversion (0-100)",
+    )
+    parser.add_argument(
+        "--resize",
+        "-r",
+        action="store_true",
+        help="Resize images instead of optimizing them",
     )
     parser.add_argument(
         "--keep-originals",
@@ -152,6 +209,8 @@ def main():
         help="Do a dry run (no images converted)",
     )
     args = parser.parse_args()
+    log.debug(f"Input Paths: {args.input_paths}")
+    log.debug(f"Extensions: {args.extensions}")
 
     print(WELCOME_MESSAGE)
 
@@ -162,6 +221,9 @@ def main():
 
     if args.format == "avif":
         Image.register_decoder("avif", AvifImagePlugin.AvifImageFile)
+
+    if args.format == "original":
+        pass
 
     # Create a list of image files to be converted
     file_list = []
@@ -176,12 +238,20 @@ def main():
         elif os.path.isfile(path) and any(path.lower().endswith(ext) for ext in args.extensions):
             log.debug(f"{path} is file")
             file_list.append(path)
+        else:
+            log.error(f"Unsupported image or directory {path}")
+
+    if not file_list:
+        log.error("No valid files specified. Exiting.")
+        raise SystemExit(0)
     
     log.info(f"Converting {len(file_list)} files to the following parameters\n" + 
              f" * Format: {args.format}\n" + 
              f" * Quality: {args.quality}%\n" +
-             f" * Keeping Originals: {args.keep_originals}\n" + 
-             f" * Keeping Metadata: {args.keep_metadata}")
+             f" * Resize Images: {human_readable_bools[args.resize]}\n" +
+             f" * Keeping Originals: {human_readable_bools[args.keep_originals]}\n" + 
+             f" * Keeping Metadata: {human_readable_bools[args.keep_metadata]}" + 
+             f"\n * Dry Run: {human_readable_bools[args.dry_run]}" if args.dry_run else "")
     
     log.log(logging.HEADER, "File Conversion")
 
@@ -191,7 +261,7 @@ def main():
         if args.dry_run:
             log.info(f"Will convert {file_path}")
             continue
-        asyncio.run(process_file(file_path, args.format, args.quality, args.keep_originals, args.keep_metadata, index, len(file_list)))
+        asyncio.run(process_file(file_path, args.format, args.quality, args.keep_originals, args.keep_metadata, index, len(file_list), resize=args.resize))
     
 
     seconds = time.time() - start_time
