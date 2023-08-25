@@ -44,7 +44,6 @@ SUPPORTED_FORMATS = {
     "gif": GifImagePlugin.GifImageFile,
     "webp": WebPImagePlugin.WebPImageFile,
     "bmp": BmpImagePlugin.BmpImageFile,
-    "blp": BlpImagePlugin.BlpImageFile,
     "tiff": TiffImagePlugin.TiffImageFile,
     "avif": AvifImagePlugin.AvifImageFile,
 }
@@ -63,8 +62,20 @@ def size_of_file_fmt(num, suffix="B"):
         num /= 1024.0
     return f"{num:.1f} Yi{suffix}"
 
+def generate_output_path(input_path, format, keep_originals, save_as_original_format):
+    directory, filename = os.path.split(input_path)
+    filename, ext = os.path.splitext(filename)
+    
+    if save_as_original_format:
+        new_ext = ext if not keep_originals else "_wio" + ext
+    else:
+        new_ext = + ext
+
+    output_path = os.path.join(directory, filename + new_ext)
+    return output_path
+
 # Function to convert an image to the specified format and quality
-async def convert_image(input_path, output_path, format, quality, keep_metadata):
+async def convert_image(input_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format):
     log.debug(f"Converting image {input_path}")
     try:
         with Image.open(input_path) as img:
@@ -72,6 +83,9 @@ async def convert_image(input_path, output_path, format, quality, keep_metadata)
             
             exif_data = img.info.get('exif')  # Get exif data
             exif_kwargs = {'exif': exif_data} if exif_data and keep_metadata else {}
+
+            if save_as_original_format:
+                output_path = generate_output_path(input_path, format, keep_originals, save_as_original_format)
 
             img.save(output_path, format=format, quality=quality, **exif_kwargs)
             return True
@@ -84,13 +98,27 @@ async def convert_image(input_path, output_path, format, quality, keep_metadata)
 async def process_file(file_path, format, quality, keep_originals, keep_metadata, index, total):
     directory, filename = os.path.split(file_path)
     filename, ext = os.path.splitext(filename)
-    output_path = os.path.join(directory, filename + "." + format)
-    if await convert_image(file_path, output_path, format, quality, keep_metadata):
-        file_path_size = os.stat(file_path).st_size
+    save_as_original_format = False
+    
+    if format == "original":
+        save_as_original_format = True
+        format = ext[1:]
+        if format == "jpg":
+            format = "jpeg" # dumb, but necessary edge case
+            
+        output_path = os.path.join(directory, filename + ext)
+        if not format:
+            log.critical(f"Invalid extension for file {output_path}")
+            return
+    else:
+        output_path = os.path.join(directory, filename + "." + format)
+        
+    file_path_size = os.stat(file_path).st_size
+    if await convert_image(file_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format):
         output_path_size = os.stat(output_path).st_size
         space_saved_percent = int((1-(output_path_size/file_path_size))*100)
         space_saved = f"({space_saved_percent}% smaller)" if space_saved_percent > 0 else f"{Fore.BLACK}{Back.WHITE}({abs(space_saved_percent)}% larger){Fore.RESET}{Back.RESET}"
-        if not keep_originals:  # Optionally delete the original file
+        if not keep_originals and not save_as_original_format:  # Optionally delete the original file
             log.info(f"Deleting file {file_path}")
             os.remove(file_path)
         log.info(f"{index+1}/{total} ({int(((index+1)/total)*100)}%) - Converted {file_path}[{size_of_file_fmt(file_path_size)}] to {output_path}[{size_of_file_fmt(output_path_size)}] {space_saved}")
@@ -162,6 +190,9 @@ def main():
 
     if args.format == "avif":
         Image.register_decoder("avif", AvifImagePlugin.AvifImageFile)
+
+    if args.format == "original":
+        pass
 
     # Create a list of image files to be converted
     file_list = []
