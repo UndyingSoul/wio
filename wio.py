@@ -121,7 +121,7 @@ def main():
     parser.add_argument(
         "--format",
         "-f",
-        choices=["webp", "avif"],
+        choices=["webp", "avif", "original"],
         default="avif",
         help="Format to convert the images to",
     )
