@@ -2,7 +2,6 @@ import json
 import logging
 import os
 
-
 class Setting():
     def __init__(self):
         settingsFileLocation = "./config/settings.json"

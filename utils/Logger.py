@@ -13,7 +13,6 @@ BOLD_SEQ = "\033[1m"
 
 SECTION_LEVEL_NUM = 9
 
-
 class ColorFormatter(logging.Formatter):
 
     def __init__(self, *args, **kwargs):
