@@ -27,12 +27,20 @@ log = logging.getLogger(__name__)
 VERSION = "1.0"
 
 #welcome message
-WELCOME_MESSAGE = f"""__        _____ ___  
-\ \      / /_ _/ _ \ 
- \ \ /\ / / | | | | |
-  \ V  V /  | | |_| |
-   \_/\_/  |___\___/ 
-Web Image Optimizer
+WELCOME_MESSAGE = f""" ▄         ▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄▄▄▄▄▄▄▄▄▄▄ 
+▐░▌       ▐░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+▐░▌       ▐░▌ ▀▀▀▀█░█▀▀▀▀ ▐░█▀▀▀▀▀▀▀█░▌
+▐░▌       ▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌   ▄   ▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌  ▐░▌  ▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌ ▐░▌░▌ ▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌▐░▌ ▐░▌▐░▌     ▐░▌     ▐░▌       ▐░▌
+▐░▌░▌   ▐░▐░▌ ▄▄▄▄█░█▄▄▄▄ ▐░█▄▄▄▄▄▄▄█░▌
+▐░░▌     ▐░░▌▐░░░░░░░░░░░▌▐░░░░░░░░░░░▌
+ ▀▀       ▀▀  ▀▀▀▀▀▀▀▀▀▀▀  ▀▀▀▀▀▀▀▀▀▀▀ 
+                                       
+          Web Image Optimizer
+
 Made with ❤️ by UndyingSoul
 GitHub: https://github.com/UndyingSoul/wio
     """
@@ -78,7 +86,7 @@ def generate_output_path(input_path, format, keep_originals, save_as_original_fo
     return output_path
 
 # Function to convert an image to the specified format and quality
-async def convert_image(input_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format):
+async def convert_image(input_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format, resize):
     log.debug(f"Converting image {input_path}")
     try:
         with Image.open(input_path) as img:
@@ -107,7 +115,7 @@ async def convert_image(input_path, output_path, format, quality, keep_metadata,
         return False
 
 # Function to process a single image file
-async def process_file(file_path, format, quality, keep_originals, keep_metadata, index, total, resize=False):
+async def process_file(file_path, format, quality, keep_originals, keep_metadata, index, total, resize):
     directory, filename = os.path.split(file_path)
     filename, ext = os.path.splitext(filename)
     save_as_original_format = False
@@ -139,7 +147,8 @@ async def process_file(file_path, format, quality, keep_originals, keep_metadata
 # Main function that handles command line arguments and orchestrates the conversion process
 def main():
     # Arguments
-    parser = argparse.ArgumentParser(description="Web Image optimizer/converter")
+    parser = argparse.ArgumentParser(description=f"This script converts and optimizes images for the web",
+                                      epilog="https://github.com/UndyingSoul/wio for examples")
     parser.add_argument(
         '--version',
         '-v',
@@ -156,6 +165,7 @@ def main():
         "-e",
         nargs="*",
         choices=SUPPORTED_FORMATS,
+        metavar="ext",
         default=["jpg", "jpeg", "png", "gif"],
         help="File extensions to convert",
     )
@@ -199,6 +209,8 @@ def main():
         help="Do a dry run (no images converted)",
     )
     args = parser.parse_args()
+    log.debug(f"Input Paths: {args.input_paths}")
+    log.debug(f"Extensions: {args.extensions}")
 
     print(WELCOME_MESSAGE)
 
@@ -238,7 +250,8 @@ def main():
              f" * Quality: {args.quality}%\n" +
              f" * Resize Images: {human_readable_bools[args.resize]}\n" +
              f" * Keeping Originals: {human_readable_bools[args.keep_originals]}\n" + 
-             f" * Keeping Metadata: {human_readable_bools[args.keep_metadata]}")
+             f" * Keeping Metadata: {human_readable_bools[args.keep_metadata]}" + 
+             f"\n * Dry Run: {human_readable_bools[args.dry_run]}" if args.dry_run else "")
     
     log.log(logging.HEADER, "File Conversion")
 
