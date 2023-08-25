@@ -108,4 +108,4 @@ def setup_logging(
                 name, "latest.log.", "") + ".log"
             h.setLevel(logging.DEBUG)
 
-    logging.getLogger("PIL").setLevel(logging.DEBUG)
+    logging.getLogger("PIL").setLevel(logging.ERROR)
