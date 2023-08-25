@@ -68,9 +68,12 @@ async def convert_image(input_path, output_path, format, quality, keep_metadata)
     log.debug(f"Converting image {input_path}")
     try:
         with Image.open(input_path) as img:
-            if format != "webp":  # Skip exif_transpose for webp format
-                img = ImageOps.exif_transpose(img)  # Fix orientation
-            img.save(output_path, format=format, quality=quality, exif=img.info['exif'] if keep_metadata else None)
+            img = ImageOps.exif_transpose(img)  # Fix orientation if applicable
+            
+            exif_data = img.info.get('exif')  # Get exif data
+            exif_kwargs = {'exif': exif_data} if exif_data and keep_metadata else {}
+
+            img.save(output_path, format=format, quality=quality, **exif_kwargs)
             return True
     except Exception as e:
         log.error(f"Could not convert {input_path}")
