@@ -45,7 +45,6 @@ SUPPORTED_FORMATS = {
     "gif": GifImagePlugin.GifImageFile,
     "webp": WebPImagePlugin.WebPImageFile,
     "bmp": BmpImagePlugin.BmpImageFile,
-    "blp": BlpImagePlugin.BlpImageFile,
     "tiff": TiffImagePlugin.TiffImageFile,
     "avif": AvifImagePlugin.AvifImageFile,
 }
@@ -79,7 +78,7 @@ def generate_output_path(input_path, format, keep_originals, save_as_original_fo
     return output_path
 
 # Function to convert an image to the specified format and quality
-async def convert_image(input_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format, resize=False):
+async def convert_image(input_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format):
     log.debug(f"Converting image {input_path}")
     try:
         with Image.open(input_path) as img:
@@ -163,7 +162,7 @@ def main():
     parser.add_argument(
         "--format",
         "-f",
-        choices=["webp", "avif"],
+        choices=["webp", "avif", "original"],
         default="avif",
         help="Format to convert the images to",
     )
@@ -210,6 +209,9 @@ def main():
 
     if args.format == "avif":
         Image.register_decoder("avif", AvifImagePlugin.AvifImageFile)
+
+    if args.format == "original":
+        pass
 
     # Create a list of image files to be converted
     file_list = []
