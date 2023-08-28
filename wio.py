@@ -1,7 +1,9 @@
+import multiprocessing
 import time
 import os
 import argparse
 import asyncio
+import traceback
 from PIL import Image
 from PIL import ImageOps
 from colorama import Fore, Back
@@ -43,7 +45,7 @@ WELCOME_MESSAGE = f""" ▄         ▄  ▄▄▄▄▄▄▄▄▄▄▄  ▄�
 
 Made with ❤️ by UndyingSoul
 GitHub: https://github.com/UndyingSoul/wio
-    """
+"""
 
 # Supported image formats and their corresponding Pillow plugins
 SUPPORTED_FORMATS = {
@@ -86,7 +88,7 @@ def generate_output_path(input_path, format, keep_originals, save_as_original_fo
     return output_path
 
 # Function to convert an image to the specified format and quality
-async def convert_image(input_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format, resize):
+def convert_image(input_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format, resize):
     log.debug(f"Converting image {input_path}")
     try:
         with Image.open(input_path) as img:
@@ -98,6 +100,12 @@ async def convert_image(input_path, output_path, format, quality, keep_metadata,
                 new_height = int(height * (quality / 100))
                 img = img.resize((new_width, new_height), Image.LANCZOS)
 
+            # Dumb workaround that avif requires subsampling to be a string and not an int. Makes no sense to me
+            if (format == "avif"):
+                resize_subsampling = "4:2:0"
+            else:
+                resize_subsampling = 0
+
             exif_data = img.info.get('exif')  # Get exif data
             exif_kwargs = {'exif': exif_data} if exif_data and keep_metadata else {}
 
@@ -105,17 +113,18 @@ async def convert_image(input_path, output_path, format, quality, keep_metadata,
                 output_path = generate_output_path(input_path, format, keep_originals, save_as_original_format)
 
             if resize:
-                img.save(output_path, format=format, quality=95, subsampling=0, **exif_kwargs)
+                img.save(output_path, format=format, quality=95, subsampling=resize_subsampling, **exif_kwargs)
             else:
                 img.save(output_path, format=format, quality=quality, **exif_kwargs)
             return True
     except Exception as e:
         log.error(f"Could not convert {input_path}")
         log.debug(e)
+        log.debug(traceback.format_exc())
         return False
 
 # Function to process a single image file
-async def process_file(file_path, format, quality, keep_originals, keep_metadata, index, total, resize):
+def process_file(file_path, format, quality, keep_originals, keep_metadata, index, total, resize):
     directory, filename = os.path.split(file_path)
     filename, ext = os.path.splitext(filename)
     save_as_original_format = False
@@ -135,7 +144,7 @@ async def process_file(file_path, format, quality, keep_originals, keep_metadata
         output_path = os.path.join(directory, filename + "." + format)
         
     file_path_size = os.stat(file_path).st_size
-    if await convert_image(file_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format, resize):
+    if convert_image(file_path, output_path, format, quality, keep_metadata, keep_originals, save_as_original_format, resize):
         output_path_size = os.stat(output_path).st_size
         space_saved_percent = int((1-(output_path_size/file_path_size))*100)
         space_saved = f"({space_saved_percent}% smaller)" if space_saved_percent > -1 else f"{Fore.BLACK}{Back.WHITE}({abs(space_saved_percent)}% larger){Fore.RESET}{Back.RESET}"
@@ -143,6 +152,41 @@ async def process_file(file_path, format, quality, keep_originals, keep_metadata
             log.info(f"Deleting file {file_path}")
             os.remove(file_path)
         log.info(f"{index+1}/{total} ({int(((index+1)/total)*100)}%) - Converted {file_path}[{size_of_file_fmt(file_path_size)}] to {output_path}[{size_of_file_fmt(output_path_size)}] {space_saved}")
+
+def log_progress_short(index, total, file_path):
+    log.info(
+        f"{index+1}/{total} ({int(((index+1)/total)*100)}%) Will convert {file_path} [{size_of_file_fmt(os.stat(file_path).st_size)}]"
+    )
+
+def run_conversion_async(file_list, args):
+    tasks = []
+
+    if args.dry_run:
+        with multiprocessing.Pool() as pool:
+            pool.starmap(
+                log_progress_short,
+                [
+                    (index, len(file_list), file_path)
+                    for index, file_path in enumerate(file_list)
+                ],
+            )
+    else:
+        with multiprocessing.Pool() as pool:
+            pool.starmap(
+                process_file,
+                [
+                    (file_path, args.format, args.quality, args.keep_originals, args.keep_metadata, index, len(file_list), args.resize)
+                    for index, file_path in enumerate(file_list)
+                ],
+            )
+
+
+def run_conversion(file_list, args):
+    for index, file_path in enumerate(file_list):
+        if args.dry_run:
+            log.info(f"{index+1}/{len(file_list)} ({int(((index+1)/len(file_list))*100)}%) Will convert {file_path} [{size_of_file_fmt(os.stat(file_path).st_size)}]")
+        else:
+            process_file(file_path, args.format, args.quality, args.keep_originals, args.keep_metadata, index, len(file_list), resize=args.resize)
 
 # Main function that handles command line arguments and orchestrates the conversion process
 def main():
@@ -203,6 +247,13 @@ def main():
         help="Keep metadata on the converted images",
     )
     parser.add_argument(
+        "--async",
+        "-a",
+        action="store_true",
+        dest="is_async",
+        help="Perform asynchronous conversion of images (unreliable progress bar)",
+    )
+    parser.add_argument(
         "--dry-run",
         "-d",
         action="store_true",
@@ -220,6 +271,7 @@ def main():
         Image.register_decoder("webp", WebPImagePlugin.WebPImageFile)
 
     if args.format == "avif":
+        Image.register_encoder("avif", AvifImagePlugin.AvifImageFile)
         Image.register_decoder("avif", AvifImagePlugin.AvifImageFile)
 
     if args.format == "original":
@@ -250,20 +302,30 @@ def main():
              f" * Quality: {args.quality}%\n" +
              f" * Resize Images: {human_readable_bools[args.resize]}\n" +
              f" * Keeping Originals: {human_readable_bools[args.keep_originals]}\n" + 
-             f" * Keeping Metadata: {human_readable_bools[args.keep_metadata]}" + 
-             f"\n * Dry Run: {human_readable_bools[args.dry_run]}" if args.dry_run else "")
+             f" * Keeping Metadata: {human_readable_bools[args.keep_metadata]}\n" + 
+             f" * Dry Run: {human_readable_bools[args.dry_run]}")
     
     log.log(logging.HEADER, "File Conversion")
 
     start_time = time.time()
-    
-    for index, file_path in enumerate(file_list):
-        if args.dry_run:
-            log.info(f"Will convert {file_path}")
-            continue
-        asyncio.run(process_file(file_path, args.format, args.quality, args.keep_originals, args.keep_metadata, index, len(file_list), resize=args.resize))
-    
 
+    # Using the --async flag to perform asynchronous conversion
+    try:
+        if args.is_async:
+            log.info("Performing asynchronous conversion.")
+            run_conversion_async(file_list, args)
+        else:
+            log.info("Performing sequential conversion.")
+            run_conversion(file_list, args)
+    except KeyboardInterrupt:
+        log.warning("Keyboard Interrupt detected. Exiting.")
+        raise SystemExit(1)
+    except Exception as e:
+        log.critical("A critical error occurred while processing images. Exiting.")
+        log.debug(e)
+        log.debug(traceback.format_exc())
+        pass
+    
     seconds = time.time() - start_time
     timer = f"Time Taken: {time.strftime('%H:%M:%S', time.gmtime(seconds))}" if start_time else ""
     log.log(logging.COMPLETION, f"Done. {timer}")
