@@ -2,7 +2,6 @@ import multiprocessing
 import time
 import os
 import argparse
-import asyncio
 import traceback
 from PIL import Image
 from PIL import ImageOps
