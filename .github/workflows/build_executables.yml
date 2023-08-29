@@ -36,8 +36,8 @@ jobs:
           # Build Linux executable (x86)
           docker run --rm -v $PWD:/workspace -w /workspace python:3 /bin/bash -c "pip install pyinstaller && pyinstaller --onefile wio.py --name wio-linux-x86 --clean"
           
-          # Build Linux executable (arm)
-          docker run --rm -v $PWD:/workspace -w /workspace arm32v7/python:3 /bin/bash -c "pip install pyinstaller && pyinstaller --onefile wio.py --name wio-linux-arm --clean"
+          # Build Linux executable (arm) (future)
+          # docker run --rm -v $PWD:/workspace -w /workspace arm32v7/python:3 /bin/bash -c "pip install pyinstaller && pyinstaller --onefile wio.py --name wio-linux-arm --clean"
           
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
