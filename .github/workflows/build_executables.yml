@@ -1,0 +1,50 @@
+name: Build Executables
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.x
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          
+      - name: Build executables
+        run: |
+          # Install pyinstaller
+          pip install pyinstaller
+          
+          # Build macOS executable
+          pyinstaller --onefile wio.py --name wio-macos --clean
+          
+          # Build Windows executable
+          pyinstaller --onefile wio.py --name wio-windows.exe --clean
+          
+          # Build Linux executable (x86)
+          docker run --rm -v $PWD:/workspace -w /workspace python:3 /bin/bash -c "pip install pyinstaller && pyinstaller --onefile wio.py --name wio-linux-x86 --clean"
+          
+          # Build Linux executable (arm)
+          docker run --rm -v $PWD:/workspace -w /workspace arm32v7/python:3 /bin/bash -c "pip install pyinstaller && pyinstaller --onefile wio.py --name wio-linux-arm --clean"
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: executables
+          path: |
+            dist/wio-macos
+            dist/wio-windows.exe
+            dist/wio-linux-x86
+            dist/wio-linux-arm
